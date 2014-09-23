@@ -1,6 +1,6 @@
 from __future__ import unicode_literals
 
-__version__ = '1.5.0-ebd'
+__version__ = '1.5.0-ebd.1'
 
 
 def register(model, app=None, manager_name='history', **records_config):
