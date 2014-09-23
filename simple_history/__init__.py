@@ -19,6 +19,8 @@ def register(model, app=None, manager_name='history', **records_config):
         records = models.HistoricalRecords(**records_config)
         records.manager_name = manager_name
         records.module = app and ("%s.models" % app) or model.__module__
+        records.cls = model
         records.add_extra_methods(model)
+        records.setup_m2m_history(model)
         records.finalize(model)
         models.registered_models[model._meta.db_table] = model
