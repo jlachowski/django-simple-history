@@ -51,6 +51,7 @@ except ImportError:  # django 1.3 compatibility
             klass.__str__ = lambda self: self.__unicode__().encode('utf-8')
         return klass
 
+ALL_M2M_FIELDS = object()
 
 registered_models = {}
 
@@ -94,11 +95,18 @@ class HistoricalRecords(object):
 
     def setup_m2m_history(self, cls):
         m2m_history_fields = self.m2m_fields
-        if m2m_history_fields:
-            assert (isinstance(m2m_history_fields, list) or isinstance(m2m_history_fields, tuple)), 'm2m_history_fields must be a list or tuple'
+        if m2m_history_fields is ALL_M2M_FIELDS:
+            for field in cls._meta.many_to_many:
+                if not sum([isinstance(item, HistoricalRecords) for item in field.rel.through.__dict__.values()]):
+                    field.rel.through.history = HistoricalRecords()
+                    register(field.rel.through)
+        elif m2m_history_fields:
+            assert (isinstance(m2m_history_fields, list) or isinstance(m2m_history_fields, tuple)), \
+                'm2m_history_fields must be a list or tuple'
             for field_name in m2m_history_fields:
                 field = getattr(cls, field_name).field
-                assert isinstance(field, models.fields.related.ManyToManyField), ('%s must be a ManyToManyField' % field_name)
+                assert isinstance(field, models.fields.related.ManyToManyField), \
+                    ('%s must be a ManyToManyField' % field_name)
                 if not sum([isinstance(item, HistoricalRecords) for item in field.rel.through.__dict__.values()]):
                     field.rel.through.history = HistoricalRecords()
                     register(field.rel.through)
