@@ -193,3 +193,14 @@ class UnicodeVerboseName(models.Model):
 
     class Meta:
         verbose_name = '\u570b'
+
+
+class TrackedAbstractBase(models.Model):
+    history = HistoricalRecords()
+
+    class Meta:
+        abstract = True
+
+
+class Tracked(TrackedAbstractBase):
+    pass

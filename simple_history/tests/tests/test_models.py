@@ -18,7 +18,7 @@ from ..models import (
     FileModel, Document, Book, HistoricalPoll, Library, State, AbstractBase,
     ConcreteAttr, ConcreteUtil, SelfFK, Temperature, WaterLevel,
     ExternalModel1, ExternalModel3, UnicodeVerboseName, HistoricalChoice,
-    HistoricalState
+    HistoricalState, Tracked
 )
 from ..external.models import ExternalModel2, ExternalModel4
 
@@ -469,3 +469,6 @@ class HistoryManagerTest(TestCase):
     def test_string_related(self):
         field_object = HistoricalState._meta.get_field_by_name('library_id')[0]
         self.assertEqual(field_object.related.model, State)
+
+    def test_historical_abstract(self):
+        Tracked.history.all()
