@@ -98,8 +98,10 @@ class HistoricalRecords(object):
         if m2m_history_fields is ALL_M2M_FIELDS:
             for field in cls._meta.many_to_many:
                 if not sum([isinstance(item, HistoricalRecords) for item in field.rel.through.__dict__.values()]):
-                    field.rel.through.history = HistoricalRecords()
-                    register(field.rel.through)
+                    through_model = field.rel.through
+                    if not through_model._meta.db_table in registered_models:
+                        through_model.history = HistoricalRecords()
+                        register(through_model)
         elif m2m_history_fields:
             assert (isinstance(m2m_history_fields, list) or isinstance(m2m_history_fields, tuple)), \
                 'm2m_history_fields must be a list or tuple'
@@ -108,8 +110,10 @@ class HistoricalRecords(object):
                 assert isinstance(field, models.fields.related.ManyToManyField), \
                     ('%s must be a ManyToManyField' % field_name)
                 if not sum([isinstance(item, HistoricalRecords) for item in field.rel.through.__dict__.values()]):
-                    field.rel.through.history = HistoricalRecords()
-                    register(field.rel.through)
+                    through_model = field.rel.through
+                    if not through_model._meta.db_table in registered_models:
+                        through_model.history = HistoricalRecords()
+                        register(through_model)
 
     def finalize(self, sender, **kwargs):
         try:
