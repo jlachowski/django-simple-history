@@ -97,6 +97,9 @@ class HistoricalRecords(object):
         m2m_history_fields = self.m2m_fields
         if m2m_history_fields is ALL_M2M_FIELDS:
             for field in cls._meta.many_to_many:
+                field = getattr(cls, field.name).field
+                assert isinstance(field, models.fields.related.ManyToManyField), \
+                    ('%s must be a ManyToManyField' % field.name)
                 if not sum([isinstance(item, HistoricalRecords) for item in field.rel.through.__dict__.values()]):
                     through_model = field.rel.through
                     if not through_model._meta.db_table in registered_models:
