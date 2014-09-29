@@ -2,6 +2,8 @@ from __future__ import unicode_literals
 
 import threading
 import copy
+from django.db.models import Q
+
 try:
     from django.apps import apps  # Django >= 1.7
 except ImportError:
@@ -292,6 +294,21 @@ class HistoricalRecords(object):
                 self.create_historical_record(item, '-')
             elif action == 'pre_clear':
                 self.create_historical_record(item, '-')
+        if action == 'pre_clear':
+            setattr(instance, '__pre_clear_items', items)
+        elif action == 'post_add' and hasattr(instance, '__pre_clear_items'):
+            other_items = getattr(instance, '__pre_clear_items')
+            for item in other_items:
+                target = getattr(item, target_field_name)
+                if has_m2m_field(target, sender) and not [i for i in items if target == getattr(i, target_field_name)]:
+                    self.create_historical_record(target, '~')
+            for item in items:
+                target = getattr(item, target_field_name)
+                if has_m2m_field(target, sender) and not [
+                    i for i in other_items if target == getattr(i, target_field_name)
+                ]:
+                    self.create_historical_record(target, '~')
+            delattr(instance, '__pre_clear_items')
 
     def create_historical_record(self, instance, type):
         history_date = getattr(instance, '_history_date', now())
@@ -411,6 +428,13 @@ def transform_field(field):
         field._unique = False
         field.db_index = True
         field.serialize = True
+
+
+def has_m2m_field(instance, through):
+    for m2m_field in instance._meta.many_to_many:
+        if through is m2m_field.rel.through:
+            return True
+    return False
 
 
 class HistoricalObjectDescriptor(object):
