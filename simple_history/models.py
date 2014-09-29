@@ -280,13 +280,13 @@ class HistoricalRecords(object):
                     target_field_name = field_name
                 elif field_value.field.related.parent_model == type(instance):
                     source_field_name = field_name
-        items = sender.objects.filter(**{source_field_name:instance})
+        items = sender.objects.filter(**{source_field_name: instance})
         if kwargs['pk_set']:
-            items = items.filter(**{target_field_name + '__id__in':kwargs['pk_set']})
+            items = items.filter(**{target_field_name + '__id__in': kwargs['pk_set']})
         for item in items:
             if action == 'post_add':
                 if hasattr(item, 'skip_history_when_saving'):
-                    return
+                    continue
                 self.create_historical_record(item, '+')
             elif action == 'pre_remove':
                 self.create_historical_record(item, '-')
