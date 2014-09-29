@@ -131,11 +131,12 @@ class HistoricalRecords(object):
         history_model = self.create_history_model(sender)
         module = importlib.import_module(self.module)
         setattr(module, history_model.__name__, history_model)
-
         # The HistoricalRecords object will be discarded,
         # so the signal handlers can't use weak references.
         models.signals.post_save.connect(self.post_save, sender=sender,
                                          weak=False)
+        models.signals.pre_delete.connect(self.pre_delete, sender=sender,
+                                          weak=False)
         models.signals.post_delete.connect(self.post_delete, sender=sender,
                                            weak=False)
         models.signals.m2m_changed.connect(self.m2m_changed, sender=sender, weak=False)
@@ -253,6 +254,20 @@ class HistoricalRecords(object):
             return
         if not kwargs.get('raw', False):
             self.create_historical_record(instance, created and '+' or '~')
+
+    def pre_delete(self, instance, **kwargs):
+        """
+        Creates deletion records for the through model of m2m fields. Also creates change records for objects on the
+        other side of the m2m relationship.
+        """
+        for m2m_field in instance._meta.many_to_many:
+            through_model = m2m_field.rel.through
+            if hasattr(through_model._meta, 'simple_history_manager_attribute'):
+                items = through_model.objects.filter(Q(**{m2m_field.m2m_column_name(): instance.pk}))
+                for item in items:
+                    self.create_historical_record(item, '-')
+                for related in m2m_field.value_from_object(instance):
+                    self.create_historical_record(related, '~')
 
     def post_delete(self, instance, **kwargs):
         self.create_historical_record(instance, '-')
