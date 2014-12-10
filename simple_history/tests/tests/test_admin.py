@@ -198,7 +198,7 @@ class AdminSiteTest(AdminTest):
             self.assertEqual(historical_poll.history_user, self.user,
                              "Middleware should make the request available to "
                              "retrieve history_user.")
-                            
+
     def test_middleware_anonymous_user(self):
         overridden_settings = {
             'MIDDLEWARE_CLASSES':

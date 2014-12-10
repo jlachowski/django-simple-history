@@ -21,6 +21,7 @@ installed_apps = [
     'simple_history',
     'simple_history.tests',
     'simple_history.tests.external',
+    'simple_history.tests.migration_test_app',
 ]
 
 DEFAULT_SETTINGS = dict(
@@ -51,7 +52,7 @@ def main():
         django.setup()
     try:
         from django.test.runner import DiscoverRunner
-    except:
+    except ImportError:
         from django.test.simple import DjangoTestSuiteRunner
         failures = DjangoTestSuiteRunner(failfast=False).run_tests(['tests'])
     else:
