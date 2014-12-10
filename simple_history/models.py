@@ -42,6 +42,12 @@ ALL_M2M_FIELDS = object()
 registered_models = {}
 
 
+def not_registered(model):
+    if model._meta.proxy:
+        return '%s%s' % (model._meta.db_table, model.__name__) not in registered_models
+    return model._meta.db_table not in registered_models
+
+
 class HistoricalRecords(object):
     thread = threading.local()
 
@@ -89,7 +95,7 @@ class HistoricalRecords(object):
                     ('%s must be a ManyToManyField' % field.name)
                 if not sum([isinstance(item, HistoricalRecords) for item in field.rel.through.__dict__.values()]):
                     through_model = field.rel.through
-                    if through_model._meta.auto_created and not through_model._meta.db_table in registered_models:
+                    if through_model._meta.auto_created and not_registered(through_model):
                         through_model.history = HistoricalRecords()
                         register(through_model)
         elif m2m_history_fields:
@@ -101,7 +107,7 @@ class HistoricalRecords(object):
                     ('%s must be a ManyToManyField' % field_name)
                 if not sum([isinstance(item, HistoricalRecords) for item in field.rel.through.__dict__.values()]):
                     through_model = field.rel.through
-                    if through_model._meta.auto_created and not through_model._meta.db_table in registered_models:
+                    if through_model._meta.auto_created and not_registered(through_model):
                         through_model.history = HistoricalRecords()
                         register(through_model)
 
@@ -115,9 +121,13 @@ class HistoricalRecords(object):
                 if not (hint_class._meta.abstract
                         and issubclass(sender, hint_class)):  # set in abstract
                     return
-        history_model = self.create_history_model(sender)
-        module = importlib.import_module(self.module)
-        setattr(module, history_model.__name__, history_model)
+        if sender._meta.proxy:
+            # Proxy models use their parent's history model
+            history_model = getattr(sender, self.manager_name).model
+        else:
+            history_model = self.create_history_model(sender)
+            module = importlib.import_module(self.module)
+            setattr(module, history_model.__name__, history_model)
         # The HistoricalRecords object will be discarded,
         # so the signal handlers can't use weak references.
         models.signals.post_save.connect(self.post_save, sender=sender,

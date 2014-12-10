@@ -3,9 +3,7 @@ from __future__ import unicode_literals
 __version__ = '1.5.3-ebd.0'
 
 
-def register(
-        model, app=None, manager_name='history', records_class=None,
-        **records_config):
+def register(model, app=None, manager_name='history', records_class=None, **records_config):
     """
     Create historical model for `model` and attach history manager to `model`.
 
@@ -19,7 +17,7 @@ def register(
     `HistoricalManager` instance directly to `model`.
     """
     from . import models
-    if model._meta.db_table not in models.registered_models:
+    if models.not_registered(model):
         if records_class is None:
             records_class = models.HistoricalRecords
         records = records_class(**records_config)
@@ -29,4 +27,7 @@ def register(
         records.add_extra_methods(model)
         records.setup_m2m_history(model)
         records.finalize(model)
-        models.registered_models[model._meta.db_table] = model
+        if model._meta.proxy:
+            models.registered_models['%s%s' % (model._meta.db_table, model.__name__)] = model
+        else:
+            models.registered_models[model._meta.db_table] = model
