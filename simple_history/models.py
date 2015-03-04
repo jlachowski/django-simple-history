@@ -279,7 +279,7 @@ class HistoricalRecords(object):
             if isinstance(field_value, models.fields.related.ReverseSingleRelatedObjectDescriptor):
                 if field_value.field.related.parent_model == kwargs['model']:
                     target_field_name = field_name
-                elif field_value.field.related.parent_model == type(instance):
+                elif isinstance(instance, field_value.field.related.parent_model):
                     source_field_name = field_name
         items = sender.objects.filter(**{source_field_name: instance})
         if kwargs['pk_set']:
