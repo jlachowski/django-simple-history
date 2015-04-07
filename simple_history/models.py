@@ -117,11 +117,24 @@ class HistoricalRecords(object):
         except AttributeError:  # called via `register`
             pass
         else:
-            if not hint_class is sender:  # set in concrete
+            if hint_class is not sender:  # set in concrete
                 if not (hint_class._meta.abstract
                         and issubclass(sender, hint_class)):  # set in abstract
                     return
         if sender._meta.proxy:
+            original_class = [base_class for base_class in sender.__bases__ if base_class._meta.abstract is False][0]
+            # Parent model must be registered before the proxy model is
+            if not_registered(original_class):
+                # Ignore the `app` kwarg, since the proxy model may be in a different app than the original model
+                register_kwargs = {
+                    'manager_name': self.manager_name,
+                    'records_class': self.__class__,
+                    'verbose_name': self.user_set_verbose_name,
+                    'bases': self.bases,
+                    'user_related_name': self.user_related_name,
+                    'm2m_fields': self.m2m_fields,
+                }
+                register(original_class, **register_kwargs)
             # Proxy models use their parent's history model
             history_model = getattr(sender, self.manager_name).model
         else:
