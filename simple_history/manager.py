@@ -22,7 +22,7 @@ class HistoryManager(models.Manager):
     def get_super_queryset(self):
         try:
             return super(HistoryManager, self).get_queryset()
-        except AttributeError:
+        except AttributeError:  # Django < 1.6
             return super(HistoryManager, self).get_query_set()
 
     def get_queryset(self):
@@ -30,7 +30,7 @@ class HistoryManager(models.Manager):
         if self.instance is None:
             return qs
 
-        if isinstance(self.instance._meta.pk, models.OneToOneField):
+        if isinstance(self.instance._meta.pk, models.ForeignKey):
             key_name = self.instance._meta.pk.name + "_id"
         else:
             key_name = self.instance._meta.pk.name

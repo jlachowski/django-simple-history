@@ -1,6 +1,18 @@
 Changes
 =======
 
+1.6.0 (2015-04-16)
+------------------
+- Add support for Django 1.8+
+- Deprecated use of ``CustomForeignKeyField`` (to be removed)
+- Remove default reverse accessor to `auth.User` for historical models (gh-121)
+
+1.5.4 (2015-01-03)
+------------------
+- Fix a bug when models have a ``ForeignKey`` with ``primary_key=True``
+- Do NOT delete the history elements when a user is deleted.
+- Add support for ``latest``
+
 1.5.3 (2014-11-18)
 ------------------
 - Fix migrations while using ``order_with_respsect_to`` (gh-140)

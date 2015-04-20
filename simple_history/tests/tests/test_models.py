@@ -1,17 +1,9 @@
 from __future__ import unicode_literals
 
 from datetime import datetime, timedelta
-try:
-    from unittest import skipUnless
-except ImportError:
-    from unittest2 import skipUnless
+import unittest
 
 import django
-try:
-    from django.contrib.auth import get_user_model
-    User = get_user_model()
-except ImportError:  # django 1.4 compatibility
-    from django.contrib.auth.models import User
 from django.db import models
 from django.db.models.loading import get_model
 from django.db.models.fields.proxy import OrderWrt
@@ -25,9 +17,20 @@ from ..models import (
     Person, FileModel, Document, Book, HistoricalPoll, Library, State,
     AbstractBase, ConcreteAttr, ConcreteUtil, SelfFK, Temperature, WaterLevel,
     ExternalModel1, ExternalModel3, UnicodeVerboseName, HistoricalChoice,
-    HistoricalState, HistoricalCustomFKError, Series, SeriesWork
+    HistoricalState, HistoricalCustomFKError, Series, SeriesWork, PollInfo,
+    UserAccessorDefault, UserAccessorOverride
 )
 from ..external.models import ExternalModel2, ExternalModel4
+
+try:
+    from unittest import skipUnless
+except ImportError:
+    from unittest2 import skipUnless
+try:
+    from django.contrib.auth import get_user_model
+    User = get_user_model()
+except ImportError:  # django 1.4 compatibility
+    from django.contrib.auth.models import User
 
 today = datetime(2021, 1, 1, 10, 0)
 tomorrow = today + timedelta(days=1)
@@ -282,6 +285,13 @@ class HistoricalRecordsTest(TestCase):
         self.assertEqual('historical quiet please',
                          l.history.get()._meta.verbose_name)
 
+    def test_foreignkey_primarykey(self):
+        """Test saving a tracked model with a `ForeignKey` primary key."""
+        poll = Poll(pub_date=today)
+        poll.save()
+        poll_info = PollInfo(poll=poll)
+        poll_info.save()
+
 
 class RegisterTest(TestCase):
     def test_register_no_args(self):
@@ -317,7 +327,7 @@ class RegisterTest(TestCase):
         self.assertEqual(expected, str(voter.history.all()[0])[:len(expected)])
 
 
-class CreateHistoryModelTests(TestCase):
+class CreateHistoryModelTests(unittest.TestCase):
 
     def test_create_history_model_with_one_to_one_field_to_integer_field(self):
         records = HistoricalRecords()
@@ -480,12 +490,20 @@ class HistoryManagerTest(TestCase):
             self.assertRaises(TypeError, HistoricalRecords, bases=bases)
 
     def test_import_related(self):
-        field_object = HistoricalChoice._meta.get_field_by_name('poll_id')[0]
-        self.assertEqual(field_object.related.model, Choice)
+        field_object = HistoricalChoice._meta.get_field_by_name('poll')[0]
+        try:
+            related_model = field_object.rel.related_model
+        except AttributeError:  # Django<1.8
+            related_model = field_object.related.model
+        self.assertEqual(related_model, HistoricalChoice)
 
     def test_string_related(self):
-        field_object = HistoricalState._meta.get_field_by_name('library_id')[0]
-        self.assertEqual(field_object.related.model, State)
+        field_object = HistoricalState._meta.get_field_by_name('library')[0]
+        try:
+            related_model = field_object.rel.related_model
+        except AttributeError:  # Django<1.8
+            related_model = field_object.related.model
+        self.assertEqual(related_model, HistoricalState)
 
     @skipUnless(django.get_version() >= "1.7", "Requires 1.7 migrations")
     def test_state_serialization_of_customfk(self):
@@ -639,3 +657,52 @@ class TestOrderWrtField(TestCase):
                 found = True
                 self.assertEqual(type(field), models.IntegerField)
         assert found, '_order not in fields ' + repr(model_state.fields)
+
+
+class TestLatest(TestCase):
+    """"Test behavior of `latest()` without any field parameters"""
+
+    def setUp(self):
+        poll = Poll.objects.create(
+            question="Does `latest()` work?", pub_date=yesterday)
+        poll.pub_date = today
+        poll.save()
+
+    def write_history(self, new_attributes):
+        poll_history = HistoricalPoll.objects.all()
+        for historical_poll, new_values in zip(poll_history, new_attributes):
+            for fieldname, value in new_values.items():
+                setattr(historical_poll, fieldname, value)
+            historical_poll.save()
+
+    def test_ordered(self):
+        self.write_history([
+            {'pk': 1, 'history_date': yesterday},
+            {'pk': 2, 'history_date': today},
+        ])
+        assert HistoricalPoll.objects.latest().pk == 2
+
+    def test_jumbled(self):
+        self.write_history([
+            {'pk': 1, 'history_date': today},
+            {'pk': 2, 'history_date': yesterday},
+        ])
+        assert HistoricalPoll.objects.latest().pk == 1
+
+    def test_sameinstant(self):
+        self.write_history([
+            {'pk': 1, 'history_date': yesterday},
+            {'pk': 2, 'history_date': yesterday},
+        ])
+        assert HistoricalPoll.objects.latest().pk == 1
+
+
+class TestUserAccessor(unittest.TestCase):
+
+    def test_accessor_default(self):
+        register(UserAccessorDefault)
+        assert not hasattr(User, 'historicaluseraccessordefault_set')
+
+    def test_accessor_override(self):
+        register(UserAccessorOverride, user_related_name='my_history_model_accessor')
+        assert hasattr(User, 'my_history_model_accessor')

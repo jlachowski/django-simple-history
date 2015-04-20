@@ -1,28 +1,22 @@
 from __future__ import unicode_literals
 
 from django.core.exceptions import PermissionDenied
-try:
-    from django.conf.urls import patterns, url
-except ImportError:  # pragma: no cover
-    from django.conf.urls.defaults import patterns, url
+from django.conf.urls import patterns, url
 from django.contrib import admin
 from django.contrib.admin import helpers
 from django.contrib.contenttypes.models import ContentType
 from django.core.urlresolvers import reverse
 from django.shortcuts import get_object_or_404, render
-from django.contrib.admin.util import quote, unquote
+from django.contrib.admin.util import unquote
 from django.utils.text import capfirst
 from django.utils.html import mark_safe
 from django.utils.translation import ugettext as _
-try:
-    from django.utils.encoding import force_text
-except ImportError:  # pragma: no cover, django 1.3 compatibility
-    from django.utils.encoding import force_unicode as force_text
+from django.utils.encoding import force_text
 from django.conf import settings
 
 try:
     USER_NATURAL_KEY = settings.AUTH_USER_MODEL
-except AttributeError:
+except AttributeError:  # Django < 1.5
     USER_NATURAL_KEY = "auth.User"
 USER_NATURAL_KEY = tuple(key.lower() for key in USER_NATURAL_KEY.split('.', 1))
 
@@ -39,7 +33,7 @@ class SimpleHistoryAdmin(admin.ModelAdmin):
         opts = self.model._meta
         try:
             info = opts.app_label, opts.model_name
-        except AttributeError:
+        except AttributeError:  # Django < 1.7
             info = opts.app_label, opts.module_name
         history_urls = patterns(
             "",
@@ -122,7 +116,7 @@ class SimpleHistoryAdmin(admin.ModelAdmin):
 
         try:
             model_name = original_opts.model_name
-        except AttributeError:
+        except AttributeError:  # Django < 1.7
             model_name = original_opts.module_name
         url_triplet = self.admin_site.name, original_opts.app_label, model_name
         context = {
@@ -158,41 +152,6 @@ class SimpleHistoryAdmin(admin.ModelAdmin):
         }
         return render(request, template_name=self.object_history_form_template,
                       dictionary=context, current_app=self.admin_site.name)
-
-    def compare_view(self, request, object_id, extra_context=None):
-        object_id = unquote(object_id)
-        obj = get_object_or_404(self.model, pk=object_id)
-        history = getattr(obj,
-                          self.model._meta.simple_history_manager_attribute)
-        prev = history.get(pk=request.GET['from'])
-        curr = history.get(pk=request.GET['to'])
-
-        fields = [{
-            'name': field.attname,
-            'content': getattr(curr, field.attname),
-            'prev_content': getattr(prev, field.attname),
-            'section_break': "\n",
-        } for field in self.model._meta.fields]
-        opts = self.model._meta
-        d = {
-            'title': _('Compare %s') % force_text(obj),
-            'app_label': opts.app_label,
-            'module_name': capfirst(force_text(opts.verbose_name_plural)),
-            'object_id': quote(object_id),
-            'object': obj,
-            'fields': fields,
-            'opts': opts,
-            'add': False,
-            'change': False,
-            'show_delete': False,
-            'is_popup': False,
-            'save_as': self.save_as,
-            'has_add_permission': self.has_add_permission(request),
-            'has_change_permission': self.has_change_permission(request, obj),
-            'has_delete_permission': self.has_delete_permission(request, obj),
-        }
-        return render(request, template_name=self.object_compare_template,
-                      current_app=self.admin_site.name, dictionary=d)
 
     def save_model(self, request, obj, form, change):
         """Set special model attribute to user for reference after save"""
