@@ -1,6 +1,12 @@
 Changes
 =======
 
+1.6.1 (2015-04-21)
+----------------
+- Fix OneToOneField transformation for historical models (gh-166)
+- Disable cascading deletes from related models to historical models
+- Fix restoring historical instances with missing one-to-one relations (gh-162)
+
 1.6.0 (2015-04-16)
 ------------------
 - Add support for Django 1.8+
