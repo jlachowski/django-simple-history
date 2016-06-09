@@ -2,6 +2,8 @@ Authors
 =======
 
 - Aleksey Kladov
+- bradford281
+- Buddy Lindsey, Jr.
 - Brian Dixon
 - Corey Bertram
 - Damien Nozay
@@ -14,9 +16,11 @@ Authors
 - Joao Pedro Francese
 - jofusa
 - John Whitlock
+- Jonathan Leroy
 - Jonathan Sanchez
 - Josh Fyne
 - Klaas van Schelven
+- Martin Bachwerk
 - Marty Alchin
 - Mauricio de Abreu Antunes
 - Micah Denbraver
@@ -27,6 +31,7 @@ Authors
 - Trey Hunner
 - Ulysses Vilela
 - vnagendra
+- Lucas Wiman
 
 Background
 ==========
