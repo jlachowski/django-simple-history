@@ -20,6 +20,10 @@ try:
 except ImportError:  # Django < 1.7
     from django.db.models import get_app
 try:
+    from django.db.models.fields.related import ForwardManyToOneDescriptor as ManyToOneDescriptor
+except ImportError:  # Django < 1.9
+    from django.db.models.fields.related import ReverseSingleRelatedObjectDescriptor as ManyToOneDescriptor
+try:
     from south.modelsinspector import add_introspection_rules
 except ImportError:  # south not present
     pass
@@ -315,7 +319,7 @@ class HistoricalRecords(object):
     def m2m_changed(self, action, instance, sender, **kwargs):
         source_field_name, target_field_name = None, None
         for field_name, field_value in sender.__dict__.items():
-            if isinstance(field_value, models.fields.related.ReverseSingleRelatedObjectDescriptor):
+            if isinstance(field_value, ManyToOneDescriptor):
                 if field_value.field.rel.model == kwargs['model']:
                     target_field_name = field_name
                 elif isinstance(instance, field_value.field.rel.model):
