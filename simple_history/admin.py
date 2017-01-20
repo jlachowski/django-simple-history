@@ -33,6 +33,7 @@ SIMPLE_HISTORY_EDIT = getattr(settings, 'SIMPLE_HISTORY_EDIT', False)
 class SimpleHistoryAdmin(admin.ModelAdmin):
     object_history_template = "simple_history/object_history.html"
     object_history_form_template = "simple_history/object_history_form.html"
+    object_compare_template = "simple_history/history_compare.html"
 
     def get_urls(self):
         """Returns the additional urls used by the Reversion admin."""
@@ -44,6 +45,9 @@ class SimpleHistoryAdmin(admin.ModelAdmin):
             url("^([^/]+)/history/([^/]+)/$",
                 admin_site.admin_view(self.history_form_view),
                 name='%s_%s_simple_history' % info),
+            url("^([^/]+)/compare/$",
+                admin_site.admin_view(self.compare_view),
+                name='%s_%s_simple_compare' % info),
         ]
         return history_urls + urls
 

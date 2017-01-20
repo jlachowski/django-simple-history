@@ -21,8 +21,11 @@ setup(
     maintainer='Trey Hunner',
     url='https://github.com/treyhunner/django-simple-history',
     packages=[
-        'simple_history', 'simple_history.management',
-        'simple_history.management.commands', 'simple_history.templatetags'],
+        "simple_history",
+        "simple_history.templatetags",
+        "simple_history.management",
+        "simple_history.management.commands",
+    ],
     classifiers=[
         "Development Status :: 5 - Production/Stable",
         "Framework :: Django",

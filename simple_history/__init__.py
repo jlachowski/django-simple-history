@@ -1,6 +1,6 @@
 from __future__ import unicode_literals
 
-__version__ = '1.8.1'
+__version__ = '1.8.1+ebd2'
 
 
 def register(
@@ -21,14 +21,17 @@ def register(
     `HistoricalManager` instance directly to `model`.
     """
     from . import models
-
     if records_class is None:
         records_class = models.HistoricalRecords
-
     records = records_class(**records_config)
     records.manager_name = manager_name
     records.table_name = table_name
     records.module = app and ("%s.models" % app) or model.__module__
+    records.cls = model
     records.add_extra_methods(model)
+    records.setup_m2m_history(model)
     records.finalize(model)
-    models.registered_models[model._meta.db_table] = model
+    if model._meta.proxy:
+        models.registered_models['%s%s' % (model._meta.db_table, model.__name__)] = model
+    else:
+        models.registered_models[model._meta.db_table] = model
