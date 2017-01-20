@@ -5,6 +5,7 @@ import importlib
 import threading
 
 from django.db import models, router
+from django.db.models import Q
 from django.db.models.fields.proxy import OrderWrt
 from django.conf import settings
 from django.contrib import admin
@@ -19,6 +20,10 @@ try:
 except ImportError:  # Django < 1.7
     from django.db.models import get_app
 try:
+    from django.db.models.fields.related import ForwardManyToOneDescriptor as ManyToOneDescriptor
+except ImportError:  # Django < 1.9
+    from django.db.models.fields.related import ReverseSingleRelatedObjectDescriptor as ManyToOneDescriptor
+try:
     from south.modelsinspector import add_introspection_rules
 except ImportError:  # south not present
     pass
@@ -27,20 +32,30 @@ else:  # south configuration for CustomForeignKeyField
         [], ["^simple_history.models.CustomForeignKeyField"])
 
 from . import exceptions
+from simple_history import register
 from .manager import HistoryDescriptor
 
+ALL_M2M_FIELDS = object()
+
 registered_models = {}
+
+
+def not_registered(model):
+    if model._meta.proxy:
+        return '%s%s' % (model._meta.db_table, model.__name__) not in registered_models
+    return model._meta.db_table not in registered_models
 
 
 class HistoricalRecords(object):
     thread = threading.local()
 
     def __init__(self, verbose_name=None, bases=(models.Model,),
-                 user_related_name='+', table_name=None, inherit=False):
+                 user_related_name='+', table_name=None, inherit=False, m2m_fields=None):
         self.user_set_verbose_name = verbose_name
         self.user_related_name = user_related_name
         self.table_name = table_name
         self.inherit = inherit
+        self.m2m_fields = m2m_fields
         try:
             if isinstance(bases, six.string_types):
                 raise TypeError
@@ -54,6 +69,7 @@ class HistoricalRecords(object):
         self.cls = cls
         models.signals.class_prepared.connect(self.finalize, weak=False)
         self.add_extra_methods(cls)
+        self.setup_m2m_history(cls)
 
     def add_extra_methods(self, cls):
         def save_without_historical_record(self, *args, **kwargs):
@@ -71,6 +87,31 @@ class HistoricalRecords(object):
         setattr(cls, 'save_without_historical_record',
                 save_without_historical_record)
 
+    def setup_m2m_history(self, cls):
+        m2m_history_fields = self.m2m_fields
+        if m2m_history_fields is ALL_M2M_FIELDS:
+            for field in cls._meta.many_to_many:
+                field = getattr(cls, field.name).field
+                assert isinstance(field, models.fields.related.ManyToManyField), \
+                    ('%s must be a ManyToManyField' % field.name)
+                if not sum([isinstance(item, HistoricalRecords) for item in field.rel.through.__dict__.values()]):
+                    through_model = field.rel.through
+                    if through_model._meta.auto_created and not_registered(through_model):
+                        through_model.history = HistoricalRecords()
+                        register(through_model)
+        elif m2m_history_fields:
+            assert (isinstance(m2m_history_fields, list) or isinstance(m2m_history_fields, tuple)), \
+                'm2m_history_fields must be a list or tuple'
+            for field_name in m2m_history_fields:
+                field = getattr(cls, field_name).field
+                assert isinstance(field, models.fields.related.ManyToManyField), \
+                    ('%s must be a ManyToManyField' % field_name)
+                if not sum([isinstance(item, HistoricalRecords) for item in field.rel.through.__dict__.values()]):
+                    through_model = field.rel.through
+                    if through_model._meta.auto_created and not_registered(through_model):
+                        through_model.history = HistoricalRecords()
+                        register(through_model)
+
     def finalize(self, sender, **kwargs):
         try:
             hint_class = self.cls
@@ -83,20 +124,38 @@ class HistoricalRecords(object):
         if hasattr(sender._meta, 'simple_history_manager_attribute'):
             raise exceptions.MultipleRegistrationsError(
                 '{}.{} registered multiple times for history tracking.'.format(
-                    sender._meta.app_label,
-                    sender._meta.object_name,
-                )
-            )
-        history_model = self.create_history_model(sender)
-        module = importlib.import_module(self.module)
-        setattr(module, history_model.__name__, history_model)
-
+                sender._meta.app_label,
+                sender._meta.object_name,
+            ))
+        if sender._meta.proxy:
+            original_class = [base_class for base_class in sender.__bases__ if base_class._meta.abstract is False][0]
+            # Parent model must be registered before the proxy model is
+            if not_registered(original_class):
+                # Ignore the `app` kwarg, since the proxy model may be in a different app than the original model
+                register_kwargs = {
+                    'manager_name': self.manager_name,
+                    'records_class': self.__class__,
+                    'verbose_name': self.user_set_verbose_name,
+                    'bases': self.bases,
+                    'user_related_name': self.user_related_name,
+                    'm2m_fields': self.m2m_fields,
+                }
+                register(original_class, **register_kwargs)
+            # Proxy models use their parent's history model
+            history_model = getattr(sender, self.manager_name).model
+        else:
+            history_model = self.create_history_model(sender)
+            module = importlib.import_module(self.module)
+            setattr(module, history_model.__name__, history_model)
         # The HistoricalRecords object will be discarded,
         # so the signal handlers can't use weak references.
         models.signals.post_save.connect(self.post_save, sender=sender,
                                          weak=False)
+        models.signals.pre_delete.connect(self.pre_delete, sender=sender,
+                                          weak=False)
         models.signals.post_delete.connect(self.post_delete, sender=sender,
                                            weak=False)
+        models.signals.m2m_changed.connect(self.m2m_changed, sender=sender, weak=False)
 
         descriptor = HistoryDescriptor(history_model)
         setattr(sender, self.manager_name, descriptor)
@@ -241,8 +300,58 @@ class HistoricalRecords(object):
         if not kwargs.get('raw', False):
             self.create_historical_record(instance, created and '+' or '~')
 
+    def pre_delete(self, instance, **kwargs):
+        """
+        Creates deletion records for the through model of m2m fields. Also creates change records for objects on the
+        other side of the m2m relationship.
+        """
+        for m2m_field in instance._meta.many_to_many:
+            through_model = m2m_field.rel.through
+            if hasattr(through_model._meta, 'simple_history_manager_attribute'):
+                items = through_model.objects.filter(Q(**{m2m_field.m2m_column_name(): instance.pk}))
+                for item in items:
+                    self.create_historical_record(item, '-')
+                for related in m2m_field.value_from_object(instance):
+                    self.create_historical_record(related, '~')
+
     def post_delete(self, instance, **kwargs):
         self.create_historical_record(instance, '-')
+
+    def m2m_changed(self, action, instance, sender, **kwargs):
+        source_field_name, target_field_name = None, None
+        for field_name, field_value in sender.__dict__.items():
+            if isinstance(field_value, ManyToOneDescriptor):
+                if field_value.field.rel.model == kwargs['model']:
+                    target_field_name = field_name
+                elif isinstance(instance, field_value.field.rel.model):
+                    source_field_name = field_name
+        items = sender.objects.filter(**{source_field_name: instance})
+        if kwargs['pk_set']:
+            items = items.filter(**{target_field_name + '__id__in': kwargs['pk_set']})
+        for item in items:
+            if action == 'post_add':
+                if hasattr(item, 'skip_history_when_saving'):
+                    continue
+                self.create_historical_record(item, '+')
+            elif action == 'pre_remove':
+                self.create_historical_record(item, '-')
+            elif action == 'pre_clear':
+                self.create_historical_record(item, '-')
+        if action == 'pre_clear':
+            setattr(instance, '__pre_clear_items', items)
+        elif action == 'post_add' and hasattr(instance, '__pre_clear_items'):
+            other_items = getattr(instance, '__pre_clear_items')
+            for item in other_items:
+                target = getattr(item, target_field_name)
+                if has_m2m_field(target, sender) and not [i for i in items if target == getattr(i, target_field_name)]:
+                    self.create_historical_record(target, '~')
+            for item in items:
+                target = getattr(item, target_field_name)
+                if has_m2m_field(target, sender) and not [
+                    i for i in other_items if target == getattr(i, target_field_name)
+                ]:
+                    self.create_historical_record(target, '~')
+            delattr(instance, '__pre_clear_items')
 
     def create_historical_record(self, instance, history_type):
         history_date = getattr(instance, '_history_date', now())
@@ -288,6 +397,13 @@ def transform_field(field):
         field._unique = False
         field.db_index = True
         field.serialize = True
+
+
+def has_m2m_field(instance, through):
+    for m2m_field in instance._meta.many_to_many:
+        if through is m2m_field.rel.through:
+            return True
+    return False
 
 
 def convert_auto_field(field):

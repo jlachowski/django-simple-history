@@ -47,7 +47,8 @@ def get_history_url(obj, history_index=None, site="admin"):
             site=site, app=app, model=model), args=[quote(obj.pk)])
 
 
-class AdminSiteTest(WebTest):
+class AdminTest(WebTest):
+
     def setUp(self):
         self.user = User.objects.create_superuser('user_login',
                                                   'u@example.com', 'pass')
@@ -65,6 +66,9 @@ class AdminSiteTest(WebTest):
         form['username'] = user.username
         form['password'] = 'pass'
         return form.submit()
+
+
+class AdminSiteTest(AdminTest):
 
     def test_history_list(self):
         model_name = self.user._meta.model_name
