@@ -1,5 +1,7 @@
 from __future__ import unicode_literals
 
+import re
+import difflib
 from django import http
 from django.core.exceptions import PermissionDenied
 from django.conf.urls import url
@@ -193,6 +195,69 @@ class SimpleHistoryAdmin(admin.ModelAdmin):
         if get_complete_version() < (1, 8):
             extra_kwargs['current_app'] = request.current_app
         return render(request, self.object_history_form_template, context, **extra_kwargs)
+
+    def compare_view(self, request, object_id, extra_context=None):
+        object_id = unquote(object_id)
+        obj = get_object_or_404(self.model, pk=object_id)
+        history = getattr(obj,
+                          self.model._meta.simple_history_manager_attribute)
+        prev, curr = history.get(pk=request.GET['from']), history.get(pk=request.GET['to'])
+
+        def generate_diff(prev, curr):
+            markup = ""
+            try:
+                prev = re.split("(\W)", prev)
+                curr = re.split("(\W)", curr)
+            except TypeError:
+                if prev != curr:
+                    return '<span class="compare-removed">{removed_content}</span><br><span class="compare-added">{added_content}</span>'.format(
+                        removed_content=prev, added_content=curr)
+                return curr
+            p_a, p_b, p_l = (0, 0, 0)
+            try:
+                for block in difflib.SequenceMatcher(a=prev, b=curr).get_matching_blocks():
+                    a, b, l = block
+                    removed = prev[p_a + p_l:a]
+                    added = curr[p_b + p_l:b]
+                    same = curr[b:b + l]
+                    if removed:
+                        markup += '<span class="compare-removed">{content}</span>'.format(content="".join(removed))
+                    if added:
+                        markup += '<span class="compare-added">{content}</span>'.format(content="".join(added))
+                    if same:
+                        markup += '<span class="compare-unchanged">{content}</span>'.format(content="".join(same))
+                    p_a, p_b, p_l = block
+
+            except TypeError:
+                return curr
+            return markup
+
+        fields = [{
+            'name': field.attname,
+            'contents': generate_diff(getattr(prev, field.attname), getattr(curr, field.attname)),
+        } for field in self.model._meta.fields]
+        opts = self.model._meta
+        d = {
+            'title': _('Compare %s') % force_text(obj),
+            'app_label': opts.app_label,
+            'module_name': capfirst(force_text(opts.verbose_name_plural)),
+            'object_id': object_id,
+            'object': obj,
+            'history_bef': prev,
+            'history_aft': curr,
+            'fields': fields,
+            'opts': opts,
+            'add': False,
+            'change': False,
+            'show_delete': False,
+            'is_popup': False,
+            'save_as': self.save_as,
+            'has_add_permission': self.has_add_permission(request),
+            'has_change_permission': self.has_change_permission(request, obj),
+            'has_delete_permission': self.has_delete_permission(request, obj),
+        }
+        return render(request, template_name=self.object_compare_template,
+                      current_app=self.admin_site.name, dictionary=d)
 
     def save_model(self, request, obj, form, change):
         """Set special model attribute to user for reference after save"""
